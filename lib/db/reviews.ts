@@ -1,4 +1,5 @@
 import { db } from './schema';
+import { calculateContentHash, deriveReviewId } from '@/lib/hashing';
 
 export interface Review {
   id: number;
@@ -8,6 +9,8 @@ export interface Review {
   rating: number | null;
   text: string | null;
   date: string | null;
+  content_hash: string | null;
+  deleted_at: string | null;
   retrieved_at: string;
 }
 
@@ -289,4 +292,122 @@ export function getStats(): {
 
   console.log(`[DB] getStats: places=${stats.totalPlaces}, reviews=${stats.totalReviews}, avgRating=${stats.avgRating?.toFixed(2)}`);
   return { ...stats, lastSync };
+}
+
+// ============================================
+// Deduplication Functions (Milestone 5)
+// ============================================
+
+/**
+ * Get a review by its content hash
+ * @param hash - The content_hash to search for
+ * @returns The review if found, undefined otherwise
+ */
+export function getReviewByHash(hash: string): Review | undefined {
+  return db.prepare(
+    'SELECT * FROM reviews WHERE content_hash = ?'
+  ).get(hash) as Review | undefined;
+}
+
+/**
+ * Get a review by its content hash or derived ID (fallback)
+ * This is the main deduplication function
+ * @param hash - The content_hash to search for
+ * @param derivedId - The derived review ID as fallback
+ * @returns The review if found, undefined otherwise
+ */
+export function getReviewByHashOrDerived(hash: string, derivedId: string): Review | undefined {
+  return db.prepare(`
+    SELECT * FROM reviews 
+    WHERE (content_hash = ? OR review_id = ?)
+    AND deleted_at IS NULL
+  `).get(hash, derivedId) as Review | undefined;
+}
+
+/**
+ * Insert a new review with automatic hash calculation
+ * @param review - Review data (without id, retrieved_at, content_hash)
+ * @returns The rowid of the inserted record (0 if already exists based on review_id)
+ */
+export function insertReviewWithHash(
+  review: Omit<Review, 'id' | 'retrieved_at' | 'content_hash' | 'deleted_at'>
+): number {
+  const hash = calculateContentHash(review);
+
+  return db.prepare(`
+    INSERT OR IGNORE INTO reviews
+    (place_id, review_id, author_name, rating, text, date, content_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    review.place_id,
+    review.review_id,
+    review.author_name,
+    review.rating,
+    review.text,
+    review.date,
+    hash
+  ).lastInsertRowid as number;
+}
+
+/**
+ * Update the content_hash for an existing review
+ * Used when a review content has been modified
+ * @param id - The review database ID
+ * @param hash - The new content hash
+ */
+export function updateReviewHash(id: number, hash: string): void {
+  db.prepare(`
+    UPDATE reviews SET content_hash = ? WHERE id = ?
+  `).run(hash, id);
+}
+
+/**
+ * Mark a review as deleted (soft delete)
+ * @param id - The review database ID
+ */
+export function markReviewDeleted(id: number): void {
+  db.prepare(`
+    UPDATE reviews
+    SET deleted_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND deleted_at IS NULL
+  `).run(id);
+}
+
+/**
+ * Get all active (non-deleted) reviews for a place
+ * @param placeId - The Google place ID
+ * @returns Array of active reviews
+ */
+export function getActiveReviews(placeId: string): Review[] {
+  return db.prepare(`
+    SELECT * FROM reviews
+    WHERE place_id = ? AND deleted_at IS NULL
+    ORDER BY date DESC
+  `).all(placeId) as Review[];
+}
+
+/**
+ * Get all reviews for a place (including deleted) - for audit purposes
+ * @param placeId - The Google place ID
+ * @returns Array of all reviews
+ */
+export function getAllReviewsForPlace(placeId: string): Review[] {
+  return db.prepare(`
+    SELECT * FROM reviews
+    WHERE place_id = ?
+    ORDER BY date DESC
+  `).all(placeId) as Review[];
+}
+
+/**
+ * Get deleted reviews for a place
+ * @param placeId - The Google place ID
+ * @returns Array of deleted reviews
+ */
+export function getDeletedReviews(placeId: string): Review[] {
+  return db.prepare(`
+    SELECT * FROM reviews
+    WHERE place_id = ? AND deleted_at IS NOT NULL
+    ORDER BY deleted_at DESC
+  `).all(placeId) as Review[];
 }

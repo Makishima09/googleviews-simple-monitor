@@ -36,6 +36,8 @@ export function initSchema() {
       rating INTEGER,
       text TEXT,
       date TEXT,
+      content_hash TEXT,
+      deleted_at TEXT,
       retrieved_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (place_id) REFERENCES places(place_id)
     );
@@ -53,6 +55,8 @@ export function initSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_reviews_place_id ON reviews(place_id);
     CREATE INDEX IF NOT EXISTS idx_reviews_date ON reviews(date);
+    CREATE INDEX IF NOT EXISTS idx_reviews_content_hash ON reviews(content_hash);
+    CREATE INDEX IF NOT EXISTS idx_reviews_deleted_at ON reviews(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_sync_log_place_id ON sync_log(place_id);
 
     -- Tabla de notificaciones
@@ -72,7 +76,38 @@ export function initSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status);
     CREATE INDEX IF NOT EXISTS idx_notifications_next_attempt ON notifications(next_attempt_at);
+
+    -- Tabla de usuarios
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE,
+      telegram_chat_id TEXT UNIQUE NOT NULL,
+      role TEXT DEFAULT 'viewer' CHECK(role IN ('admin', 'viewer')),
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Tabla de relación usuario-negocio
+    CREATE TABLE IF NOT EXISTS user_businesses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      place_id TEXT NOT NULL,
+      role TEXT DEFAULT 'viewer' CHECK(role IN ('admin', 'viewer')),
+      notify_new INTEGER DEFAULT 1,
+      notify_modified INTEGER DEFAULT 1,
+      notify_deleted INTEGER DEFAULT 0,
+      notify_rating INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, place_id)
+    );
+
+    -- Índices para usuarios
+    CREATE INDEX IF NOT EXISTS idx_users_telegram_chat_id ON users(telegram_chat_id);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+    CREATE INDEX IF NOT EXISTS idx_user_businesses_user_id ON user_businesses(user_id);
+    CREATE INDEX IF NOT EXISTS idx_user_businesses_place_id ON user_businesses(place_id);
   `);
 
-  console.log('[DB] Schema initialized');
+  console.log('[DB] Schema initialized with users tables');
 }

@@ -16,6 +16,16 @@ export function initMigrations() {
 const migrations: Record<string, string> = {
   '001_initial': `
     -- Initial schema handled by initSchema()
+  `,
+  '002_add_content_hash': `
+    -- Add content_hash column for deduplication
+    ALTER TABLE reviews ADD COLUMN content_hash TEXT;
+    CREATE INDEX IF NOT EXISTS idx_reviews_content_hash ON reviews(content_hash);
+  `,
+  '003_add_deleted_at': `
+    -- Add deleted_at column for soft delete
+    ALTER TABLE reviews ADD COLUMN deleted_at TEXT;
+    CREATE INDEX IF NOT EXISTS idx_reviews_deleted_at ON reviews(deleted_at);
   `
 };
 

@@ -3,14 +3,20 @@ import { initSchema } from '@/lib/db/schema';
 import { runMigrations } from '@/lib/db/migrate';
 import {
   insertReview,
+  insertReviewWithHash,
   insertPlace,
   startSyncLog,
   finishSyncLog,
   getReviewByExternalId,
+  getReviewByHashOrDerived,
+  updateReviewHash,
+  markReviewDeleted,
+  getActiveReviews,
   getPlaceByPlaceId,
   updatePlaceTimestamp
 } from '@/lib/db/reviews';
-import { queueNotification, processNotifications } from '@/lib/notifications/worker';
+import { calculateContentHash, deriveReviewId } from '@/lib/hashing';
+import { queueNotification, processNotifications, notifyNewReviewForPlace } from '@/lib/notifications/worker';
 
 // Initialize database schema and run migrations at startup
 initSchema();
@@ -21,6 +27,8 @@ type SyncResult = {
   success: boolean;
   placeId?: string;
   newReviews?: number;
+  modifiedReviews?: number;
+  deletedReviews?: number;
   timestamp: string;
   error?: string;
 };
@@ -66,7 +74,7 @@ export async function POST(request: NextRequest) {
       const result = await syncPlace(placeId, apiKey);
       results.push(result);
 
-      console.log(`[SYNC] ${placeId}: ${result.success ? 'OK' : 'ERROR'} - nuevas: ${result.newReviews || 0}`);
+      console.log(`[SYNC] ${placeId}: ${result.success ? 'OK' : 'ERROR'} - new: ${result.newReviews || 0}, modified: ${result.modifiedReviews || 0}, deleted: ${result.deletedReviews || 0}`);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Error desconocido';
       console.error(`[SYNC] ${placeId}: EXCEPTION - ${errorMsg}`);
@@ -123,9 +131,15 @@ async function syncPlace(placeId: string, apiKey: string): Promise<SyncResult> {
     insertPlace(placeId, placeName);
     updatePlaceTimestamp(placeId);
 
-    // Process reviews and track new ones
+    // Process reviews with deduplication using hashes
     const reviews = data.result?.reviews || [];
+
+    // Get existing active reviews for this place
+    const existingReviews = getActiveReviews(placeId);
+    const existingHashes = new Map(existingReviews.map(r => [r.content_hash, r]));
+
     let newCount = 0;
+    let modifiedCount = 0;
     const newReviews: Array<{
       review_id: string;
       author_name: string | null;
@@ -134,15 +148,28 @@ async function syncPlace(placeId: string, apiKey: string): Promise<SyncResult> {
     }> = [];
 
     for (const review of reviews) {
-      // Check if review already exists to avoid duplicates
-      const exists = getReviewByExternalId(review.review_id);
-      if (!exists) {
-        // Google returns review time as Unix timestamp
-        const reviewDate = review.time ? new Date(review.time * 1000).toISOString() : null;
+      // Google returns review time as Unix timestamp
+      const reviewDate = review.time ? new Date(review.time * 1000).toISOString() : null;
 
-        insertReview({
+      // Calculate content hash and derive fallback ID
+      const hash = calculateContentHash({
+        author_name: review.author_name,
+        text: review.text,
+        rating: review.rating,
+        date: reviewDate
+      });
+
+      const derivedId = deriveReviewId(placeId, review.author_name || '', review.time);
+      const reviewId = review.review_id || derivedId;
+
+      // Check if review exists by hash or derived ID (deduplication)
+      const existing = getReviewByHashOrDerived(hash, derivedId);
+
+      if (!existing) {
+        // New review - insert with hash
+        insertReviewWithHash({
           place_id: placeId,
-          review_id: review.review_id,
+          review_id: reviewId,
           author_name: review.author_name || null,
           rating: review.rating || null,
           text: review.text || null,
@@ -151,42 +178,69 @@ async function syncPlace(placeId: string, apiKey: string): Promise<SyncResult> {
 
         // Track new review for notification
         newReviews.push({
-          review_id: review.review_id,
+          review_id: reviewId,
           author_name: review.author_name || null,
           rating: review.rating || null,
           text: review.text || null
         });
 
         newCount++;
+      } else if (existing.content_hash !== hash) {
+        // Review modified - update hash
+        updateReviewHash(existing.id, hash);
+        modifiedCount++;
+        console.log(`[SYNC] ${placeId}: review modified (id=${existing.id})`);
       }
     }
 
-    // Queue notifications for new reviews
+    // Detect deleted reviews (exist in DB but not in API response)
+    const currentHashes = new Set(
+      reviews.map((r: { author_name?: string; text?: string; rating?: number; time?: number }) => {
+        const reviewDate = r.time ? new Date(r.time * 1000).toISOString() : null;
+        return calculateContentHash({
+          author_name: r.author_name,
+          text: r.text,
+          rating: r.rating,
+          date: reviewDate
+        });
+      })
+    );
+
+    let deletedCount = 0;
+    for (const existing of existingReviews) {
+      if (existing.content_hash && !currentHashes.has(existing.content_hash)) {
+        markReviewDeleted(existing.id);
+        deletedCount++;
+        console.log(`[SYNC] ${placeId}: review marked as deleted (id=${existing.id})`);
+      }
+    }
+
+    // Queue notifications for new reviews - send to specific users for this place
     if (newCount > 0) {
       const place = getPlaceByPlaceId(placeId);
+      let totalQueued = 0;
+      
       for (const review of newReviews) {
-        const stars = '★'.repeat(review.rating || 0) + '☆'.repeat(5 - (review.rating || 0));
-        const message = `⭐ *Nueva Reseña* para *${place?.name || placeId}*\n\n` +
-          `${stars} ${review.rating}/5\n` +
-          `*${review.author_name || 'Anónimo'}*\n\n` +
-          `"${review.text?.substring(0, 200) || 'Sin texto'}..."`;
-
-        queueNotification(
-          review.review_id,
+        const queued = notifyNewReviewForPlace(
           placeId,
-          message
+          review,
+          place?.name || undefined
         );
+        totalQueued += queued;
       }
-      console.log(`[SYNC] ${placeId}: ${newCount} notificaciones encoladas`);
+      
+      console.log(`[SYNC] ${placeId}: ${newCount} reviews, ${totalQueued} notificaciones encoladas para usuarios asignados`);
     }
 
     finishSyncLog(logId, newCount, 'success');
-    console.log(`[SYNC] ${placeId}: saved ${newCount} new reviews out of ${reviews.length} total`);
+    console.log(`[SYNC] ${placeId}: new=${newCount}, modified=${modifiedCount}, deleted=${deletedCount} out of ${reviews.length} total`);
 
     return {
       success: true,
       placeId,
       newReviews: newCount,
+      modifiedReviews: modifiedCount,
+      deletedReviews: deletedCount,
       timestamp: new Date().toISOString()
     };
   } catch (err) {

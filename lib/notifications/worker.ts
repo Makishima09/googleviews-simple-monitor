@@ -4,6 +4,7 @@ import {
   markNotificationFailed,
   createNotification
 } from '@/lib/db/notifications';
+import { getUsersForPlace, getAdmins } from '@/lib/db/users';
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const DEFAULT_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -105,7 +106,63 @@ export async function processNotifications(): Promise<{
 }
 
 /**
- * Queue a notification for later delivery
+ * Queue notifications for new review to specific users who have access to the place
+ * This is the key function for per-user notifications
+ */
+export function queueNotificationForPlace(
+  reviewId: string,
+  placeId: string,
+  text: string,
+  notifyType: 'new' | 'modified' | 'deleted' = 'new'
+): number {
+  // Get users who should receive notifications for this place
+  const users = getUsersForPlace(placeId, notifyType);
+  
+  if (users.length === 0) {
+    console.log(`[NOTIFICATIONS] No hay usuarios para notificaciones de place=${placeId}`);
+    return 0;
+  }
+  
+  let queued = 0;
+  
+  for (const user of users) {
+    // Get user's notification preferences from their business association
+    const payload = {
+      text,
+      chat_id: user.telegram_chat_id,
+      token: TELEGRAM_TOKEN,
+      user_id: user.id,
+      user_name: user.name,
+      notify_type: notifyType
+    };
+    
+    const id = createNotification(reviewId, placeId, payload);
+    queued++;
+    console.log(`[NOTIFICATIONS] Notificación encolada: id=${id}, user=${user.name}, place=${placeId}`);
+  }
+  
+  // Also notify admins
+  const admins = getAdmins();
+  for (const admin of admins) {
+    const adminPayload = {
+      text: `[ADMIN] ${text}`,
+      chat_id: admin.telegram_chat_id,
+      token: TELEGRAM_TOKEN,
+      user_id: admin.id,
+      user_name: admin.name,
+      is_admin_alert: true
+    };
+    
+    const id = createNotification(reviewId, placeId, adminPayload);
+    queued++;
+    console.log(`[NOTIFICATIONS] Admin alert encolada: id=${id}, admin=${admin.name}`);
+  }
+  
+  return queued;
+}
+
+/**
+ * Queue a notification for later delivery (legacy, uses default chat)
  * Returns notification ID or -1 if configuration is missing
  */
 export function queueNotification(
@@ -134,4 +191,49 @@ export function queueNotification(
   const id = createNotification(reviewId, placeId, payload);
   console.log(`[NOTIFICATIONS] Notificación encolada: ${id} para review ${reviewId}`);
   return id;
+}
+
+/**
+ * Queue personalized notifications for each user associated with a place
+ * Use this for new reviews discovered during sync
+ */
+export function notifyNewReviewForPlace(
+  placeId: string,
+  review: {
+    review_id: string;
+    author_name: string | null;
+    rating: number | null;
+    text: string | null;
+  },
+  placeName?: string
+): number {
+  const stars = '★'.repeat(review.rating || 0) + '☆'.repeat(5 - (review.rating || 0));
+  const truncatedText = review.text?.substring(0, 200) || 'Sin texto';
+  
+  const message = `⭐ *Nueva Reseña* para *${placeName || placeId}*\n\n` +
+    `${stars} ${review.rating}/5\n` +
+    `*${review.author_name || 'Anónimo'}*\n\n` +
+    `"${truncatedText}..."`;
+  
+  return queueNotificationForPlace(review.review_id, placeId, message, 'new');
+}
+
+/**
+ * Queue notifications for modified review
+ */
+export function notifyModifiedReviewForPlace(
+  placeId: string,
+  review: {
+    review_id: string;
+    author_name: string | null;
+    rating: number | null;
+    text: string | null;
+  },
+  placeName?: string
+): number {
+  const message = `✏️ *Reseña Modificada* para *${placeName || placeId}*\n\n` +
+    `*${review.author_name || 'Anónimo'}*\n\n` +
+    `"${review.text?.substring(0, 200) || 'Sin texto'}..."`;
+  
+  return queueNotificationForPlace(review.review_id, placeId, message, 'modified');
 }
