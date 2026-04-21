@@ -54,6 +54,24 @@ export function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_reviews_place_id ON reviews(place_id);
     CREATE INDEX IF NOT EXISTS idx_reviews_date ON reviews(date);
     CREATE INDEX IF NOT EXISTS idx_sync_log_place_id ON sync_log(place_id);
+
+    -- Tabla de notificaciones
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      review_id TEXT NOT NULL,
+      place_id TEXT NOT NULL,
+      channel TEXT DEFAULT 'telegram',
+      payload TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      retry_count INTEGER DEFAULT 0,
+      last_error TEXT,
+      next_attempt_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      sent_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status);
+    CREATE INDEX IF NOT EXISTS idx_notifications_next_attempt ON notifications(next_attempt_at);
   `);
 
   console.log('[DB] Schema initialized');

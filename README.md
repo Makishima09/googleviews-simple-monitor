@@ -38,7 +38,7 @@ Crea un archivo `.env.local` en la raíz del proyecto:
 GOOGLE_API_KEY=tu_api_key_aqui
 
 # Places a monitorear (separados por coma)
-PLACE_IDS=ChIJN1t_tDeuEmsRUsoyG83frY4,ChIJ...
+PLACE_IDS=ChIJEXAMPLExxxxxxxxx,ChIJ...
 
 # Clave secreta para el endpoint de sync (mínimo 32 caracteres)
 CRON_SECRET=tu_cadena_segura_aqui_minimo_32_caracteres
@@ -75,7 +75,7 @@ Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
 ### 2. Google Place ID
 
 1. Busca tu negocio en [Google Place ID Finder](https://developers.google.com/maps/documentation/places/web-service/place-id)
-2. Copia el **Place ID** (ejemplo: `ChIJN1t_tDeuEmsRUsoyG83frY4`)
+2. Copia el **Place ID** (ejemplo: `ChIJEXAMPLExxxxxxxxx`)
 
 ### 3. Telegram Bot
 

@@ -57,7 +57,7 @@ El Place ID identifica tu negocio en Google Maps.
 
 1. Ve a [Place ID Finder](https://developers.google.com/maps/documentation/places/web-service/place-id)
 2. Busca tu negocio en el mapa
-3. Copia el **Place ID** (algo como `ChIJN1t_tDeuEmsRUsoyG83frY4`)
+3. Copia el **Place ID** (algo como `ChIJEXAMPLExxxxxxxxx`)
 
 ### Método 2: URL de Google Maps
 
@@ -127,8 +127,8 @@ Abre `.env.local` y completa los valores:
 GOOGLE_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 # Tus Places ID separados por coma (obligatorio)
-# Ejemplo: ChIJN1t_tDeuEmsRUsoyG83frY4,ChIJxxxx
-PLACE_IDS=ChIJN1t_tDeuEmsRUsoyG83frY4
+# Ejemplo: ChIJEXAMPLExxxxxxxxx,ChIJxxxx
+PLACE_IDS=ChIJEXAMPLExxxxxxxxx
 
 # ====================
 # CRON CONFIGURATION
@@ -214,7 +214,7 @@ Deberías ver una respuesta JSON como:
   "results": [
     {
       "success": true,
-      "placeId": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+      "placeId": "ChIJEXAMPLExxxxxxxxx",
       "newReviews": 5,
       "timestamp": "2024-01-15T10:30:00.000Z"
     }
@@ -299,7 +299,7 @@ curl -X POST "https://tu-proyecto.vercel.app/api/internal/sync?secret=tu_cron_se
 curl "https://tu-proyecto.vercel.app/api/reviews"
 
 # Reviews de un lugar específico
-curl "https://tu-proyecto.vercel.app/api/reviews?place_id=ChIJN1t_tDeuEmsRUsoyG83frY4"
+curl "https://tu-proyecto.vercel.app/api/reviews?place_id=ChIJEXAMPLExxxxxxxxx"
 
 # Reviews con rating >= 4
 curl "https://tu-proyecto.vercel.app/api/reviews?rating=4"
@@ -326,7 +326,7 @@ Respuesta:
     "oneStar": 10
   },
   "recentSync": {
-    "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+    "place_id": "ChIJEXAMPLExxxxxxxxx",
     "status": "success",
     "new_reviews": 3,
     "finished_at": "2024-01-15T10:30:00Z"

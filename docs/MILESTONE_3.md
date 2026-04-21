@@ -221,7 +221,7 @@ export async function GET() {
 curl "http://localhost:3000/api/places"
 
 # Obtener reviews con filtros
-curl "http://localhost:3000/api/reviews?place_id=ChIJRcGimC7BlolrI3PqhQ3YpEk&rating=4&desde=2024-01-01"
+curl "http://localhost:3000/api/reviews?place_id=ChIJEXAMPLExxxxxxxxx&rating=4&desde=2024-01-01"
 
 # Obtener estadísticas
 curl "http://localhost:3000/api/stats"

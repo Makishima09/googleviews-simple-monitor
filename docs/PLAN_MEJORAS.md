@@ -188,21 +188,52 @@ Google Business Profile API con **OAuth 2.0** del titular del negocio.
 
 ---
 
+## Features Pendientes (no implementadas aún)
+
+### Multi-negocio (Business)
+
+Sistema para gestionar múltiples negocios desde una sola instancia, con usuarios y permisos.
+
+| Feature | Descripción | Estado |
+|---------|-----------|--------|
+| Múltiples placeIds | Soporte para varios lugares (ya funciona) | ✅ |
+| Chat por negocio | Telegram chat diferente por cada negocio | ⏳ Pendiente |
+| UI gestión lugares | Dashboard para añadir/editar lugares | ⏳ Pendiente |
+| Permisos rol | roles: admin (gestiona), viewer (solo ve) | ⏳ Pendiente |
+| Dashboard por negocio | Stats filtrados por lugar | ⏳ Pendiente |
+| Asignación usuario-negocio | Qué usuario ve qué negocio | ⏳ Pendiente |
+
+**Tablas necesarias**:
+```sql
+-- users (id, name, email, telegram_chat_id, created_at)
+-- user_businesses (user_id, business_id, role)
+-- businesses (ya existe como places)
+```
+
+**Implementación sugerida**:
+1. Añadir tabla `users` con telegram_chat_id
+2. Añadir tabla `user_businesses` con roles
+3. Modificar sync para enviar a cada chat según negocio
+4. Nueva UI para gestión de lugares y usuarios
+
+---
+
 ## Roadmap de ejecución (orden óptimo)
 
-| Fase | Contenido | Estimación orientativa |
-|------|-----------|-------------------------|
-| **A** | Scheduler en servidor + ruta interna protegida + logging estructurado | 1–2 días |
-| **B** | SQLite: esquema, migraciones, `businesses`, `reviews`, `sync_state`, `notifications` | 1–2 días |
-| **C** | `ReviewsProvider` + adapter Places; identificador estable o hash canónico; integrar sync con DB | 2 días |
-| **D** | Dedupe, `content_hash`, revisión periódica, soft delete | 1–2 días |
-| **E** | Cola Telegram: envío, backoff, DLQ | 1–2 días |
-| **F** | (Opcional) Adapter Apify u otro proveedor | 1–2 días |
-| **G** | (Opcional) Autenticación multiusuario | 2+ días |
-| **H** | (Opcional) Respuestas GBP + OAuth | 3+ días (muy variable) |
+| Fase | Contenido | Estimación |
+|------|-----------|-----------|
+| **1** | Scheduler + logging estructurado | ✅ Listo |
+| **2** | SQLite schema + migraciones | ✅ Listo |
+| **3** | API pública REST | ✅ Listo |
+| **4** | Notificaciones Telegram | ✅ Listo |
+| **5** | Deduplicación con hashes | ⏳ Pendiente |
+| **6** | Multi-negocio + usuarios | ⏳ Pendiente |
+| **F** | Adapter Apify u otro proveedor | 🔜 Futuro |
+| **G** | Respuestas GBP + OAuth | 🔜 Futuro |
 
-**Total núcleo (A–E)**: aprox. **7–12 días** según profundidad de tests y despliegue.  
-**Fases F–H** se suman según alcance real del producto.
+**Completados (1–4)**: Monitoreo 24/7 con SQLite y notificaciones  
+**Pendientes (5–6)**: Deduplicación + multi-negocio  
+**Futuro**: Proveedor alternativo + respuestas
 
 ---
 
@@ -231,7 +262,13 @@ Google Business Profile API con **OAuth 2.0** del titular del negocio.
 
 ## Referencias en el repo
 
+- Milestones implementados: `docs/MILESTONE_1.md` a `MILESTONE_4.md`
 - API reseñas: `app/api/reviews/route.ts`
+- API places: `app/api/places/route.ts`
+- API stats: `app/api/stats/route.ts`
+- Sync interno: `app/api/internal/sync/route.ts`
+- SQLite: `lib/db/schema.ts`, `lib/db/reviews.ts`, `lib/db/notifications.ts`
+- Worker: `lib/notifications/worker.ts`
 - Telegram: `app/api/telegram/route.ts`
 - Polling UI: `app/page.tsx`
 - Limitaciones detalladas: `docs/LIMITACIONES.md`

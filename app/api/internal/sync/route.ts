@@ -7,8 +7,10 @@ import {
   startSyncLog,
   finishSyncLog,
   getReviewByExternalId,
+  getPlaceByPlaceId,
   updatePlaceTimestamp
 } from '@/lib/db/reviews';
+import { queueNotification, processNotifications } from '@/lib/notifications/worker';
 
 // Initialize database schema and run migrations at startup
 initSchema();
@@ -80,13 +82,17 @@ export async function POST(request: NextRequest) {
   // 4. Verificar umbral de fallos y alertar si es necesario
   await checkFailureThreshold(results);
 
-  // 5. Responder con resumen
+  // 5. Process pending notifications
+  const notifResult = await processNotifications();
+
+  // 6. Responder con resumen
   const successfulSyncs = results.filter(r => r.success).length;
   return NextResponse.json({
     success: true,
     total: placeIds.length,
     successful: successfulSyncs,
     failed: placeIds.length - successfulSyncs,
+    notifications: notifResult,
     results
   });
 }
@@ -117,9 +123,15 @@ async function syncPlace(placeId: string, apiKey: string): Promise<SyncResult> {
     insertPlace(placeId, placeName);
     updatePlaceTimestamp(placeId);
 
-    // Process reviews
+    // Process reviews and track new ones
     const reviews = data.result?.reviews || [];
     let newCount = 0;
+    const newReviews: Array<{
+      review_id: string;
+      author_name: string | null;
+      rating: number | null;
+      text: string | null;
+    }> = [];
 
     for (const review of reviews) {
       // Check if review already exists to avoid duplicates
@@ -136,8 +148,36 @@ async function syncPlace(placeId: string, apiKey: string): Promise<SyncResult> {
           text: review.text || null,
           date: reviewDate
         });
+
+        // Track new review for notification
+        newReviews.push({
+          review_id: review.review_id,
+          author_name: review.author_name || null,
+          rating: review.rating || null,
+          text: review.text || null
+        });
+
         newCount++;
       }
+    }
+
+    // Queue notifications for new reviews
+    if (newCount > 0) {
+      const place = getPlaceByPlaceId(placeId);
+      for (const review of newReviews) {
+        const stars = '★'.repeat(review.rating || 0) + '☆'.repeat(5 - (review.rating || 0));
+        const message = `⭐ *Nueva Reseña* para *${place?.name || placeId}*\n\n` +
+          `${stars} ${review.rating}/5\n` +
+          `*${review.author_name || 'Anónimo'}*\n\n` +
+          `"${review.text?.substring(0, 200) || 'Sin texto'}..."`;
+
+        queueNotification(
+          review.review_id,
+          placeId,
+          message
+        );
+      }
+      console.log(`[SYNC] ${placeId}: ${newCount} notificaciones encoladas`);
     }
 
     finishSyncLog(logId, newCount, 'success');
