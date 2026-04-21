@@ -9,14 +9,15 @@ Sistema automatizado para detectar y recibir notificaciones instantáneas cuando
 
 ## ✨ Características
 
-- ✅ **Monitoreo en tiempo real** de reseñas de Google Maps
+- ✅ **Monitoreo 24/7** en servidor (no requiere navegador abierto)
+- ✅ **Scheduler automático** con Vercel Cron (cada 30 min)
+- ✅ **Persistencia SQLite** store local de reseñas
 - ✅ **Notificaciones instantáneas** vía Telegram
 - ✅ **Historial visual** de reseñas existentes y nuevas
 - ✅ **Diferenciación automática** entre reseñas iniciales y nuevas
-- ✅ **Interfaz intuitiva** con estado visual del monitor
-- ✅ **Persistencia** de configuración y historial en el navegador
-- ✅ **Registro de actividad** con historial de eventos
-- ✅ **Configuración flexible** del intervalo de revisión
+- ✅ **API pública** para acceder a reseñas (`/api/reviews`, `/api/places`, `/api/stats`)
+- ✅ **Registro de actividad** con logs estructurados en servidor
+- ✅ **Alertas automáticas** si N ciclos fallan consecutivamente
 - ✅ **Backend seguro** con Next.js API Routes
 - ✅ **Listo para producción** con Next.js 14
 
@@ -28,16 +29,28 @@ Sistema automatizado para detectar y recibir notificaciones instantáneas cuando
 npm install
 ```
 
-### 2. Configurar variables de entorno (opcional)
+### 2. Configurar variables de entorno
 
 Crea un archivo `.env.local` en la raíz del proyecto:
 
 ```env
-# Opcional: Configura tu API Key aquí para mayor seguridad
+# Google Places API - obligatorio
 GOOGLE_API_KEY=tu_api_key_aqui
+
+# Places a monitorear (separados por coma)
+PLACE_IDS=ChIJN1t_tDeuEmsRUsoyG83frY4,ChIJ...
+
+# Clave secreta para el endpoint de sync (mínimo 32 caracteres)
+CRON_SECRET=tu_cadena_segura_aqui_minimo_32_caracteres
+
+# Opcional: Webhook para alertas (Telegram, Slack, etc.)
+ALERT_WEBHOOK_URL=
+
+# Opcional: Fallos consecutivos antes de alertar (default: 3)
+FAILURE_THRESHOLD=3
 ```
 
-> **Nota:** Si no configuras el `.env.local`, puedes ingresar la API Key directamente en la interfaz web.
+> **Nota:** El endpoint `/api/internal/sync` usa `CRON_SECRET` para autenticación. Ver `docs/MILESTONE_1.md` para más detalles.
 
 ### 3. Ejecutar en desarrollo
 
@@ -137,13 +150,15 @@ pm2 startup
 
 ## ⚙️ Configuración Avanzada
 
-### Monitoreo 24/7
+### Monitoreo 24/7 (Ahora incluido)
 
-Para que el monitor funcione continuamente sin mantener el navegador abierto, necesitas:
+El sistema ahora ejecuta el sync automáticamente en el servidor:
 
-1. **Deplegar en un servidor** (Vercel, Railway, VPS)
-2. **Crear un cron job** o servicio que ejecute las revisiones
-3. **Usar una base de datos** para persistir las reseñas conocidas
+1. **Vercel Cron** invoca `/api/internal/sync` cada 30 minutos
+2. **SQLite** persiste las reseñas localmente
+3. **Alertas automáticas** si N ciclos fallan consecutivamente
+
+Ver [`docs/MILESTONE_1.md`](./docs/MILESTONE_1.md) para detalles completos.
 
 ### Estructura del Proyecto
 
@@ -151,25 +166,37 @@ Para que el monitor funcione continuamente sin mantener el navegador abierto, ne
 google-reviews-monitor/
 ├── app/
 │   ├── api/
+│   │   ├── internal/
+│   │   │   └── sync/
+│   │   │       └── route.ts   # Endpoint interno de sync (protegido)
+│   │   ├── places/
+│   │   │   └── route.ts      # API pública de places
 │   │   ├── reviews/
-│   │   │   └── route.ts       # API Route para Google Places
+│   │   │   └── route.ts     # API pública de reviews (SQLite o Google)
+│   │   ├── stats/
+│   │   │   └── route.ts    # API de estadísticas
 │   │   └── telegram/
-│   │       └── route.ts       # API Route para Telegram
-│   ├── globals.css            # Estilos globales
-│   ├── layout.tsx             # Layout principal
-│   └── page.tsx               # Componente principal
-├── docs/                      # 📚 Documentación
-│   ├── QUICK_START.md         # Guía de inicio rápido
-│   ├── HISTORIAL_RESEÑAS.md   # Funcionalidad de historial
-│   ├── BUGFIX_DUPLICADOS.md   # Solución bug de duplicados
-│   ├── FIX_INFINITE_LOOP.md   # Solución loop infinito
-│   ├── NUEVA_FUNCIONALIDAD.md # Nuevas características
-│   └── Informe.md             # Informe conceptual del proyecto
-├── public/                    # Archivos estáticos
-├── .env.local                 # Variables de entorno (no subir a Git)
-├── next.config.js             # Configuración de Next.js
-├── package.json               # Dependencias
-└── README.md                  # Este archivo
+│   │       └── route.ts     # API de notificaciones Telegram
+│   ├── globals.css
+│   ├── layout.tsx
+│   └── page.tsx
+├── docs/                     # 📚 Documentación
+│   ├── MILESTONE_1.md      # Scheduler + logging
+│   ├── MILESTONE_2.md      # SQLite schema
+│   ├── MILESTONE_3.md       # API pública
+│   ├── QUICK_START.md
+│   └── ...
+├── lib/
+│   └── db/
+│       ├── schema.ts        # Schema SQLite
+│       ├── migrate.ts      # Migraciones
+│   └── reviews.ts        # Queries de reviews
+├── data/                    # Base de datos SQLite (no subir a Git)
+├── vercel.json             # Configuración Vercel Cron
+├── .env.local
+├── next.config.js
+├── package.json
+└── README.md
 ```
 
 ## 🔒 Seguridad
@@ -206,6 +233,7 @@ npm run lint
 - **Lucide React** - Iconos
 - **Google Places API** - Obtención de reseñas
 - **Telegram Bot API** - Notificaciones
+- **SQLite (better-sqlite3)** - Persistencia local
 
 ## 📚 Documentación Completa
 
@@ -254,8 +282,13 @@ Logs en tiempo real de todas las acciones del monitor.
 - Detén el servidor y reinicia
 
 ### El monitor se detiene al cerrar el navegador
-- Esto es normal si ejecutas en localhost
-- Para monitoreo 24/7, deploya en Vercel/Railway/VPS
+- **YA NO ES PROBLEMA** - el sync corre en servidor con Vercel Cron
+- El navegador solo muestra la UI, el trabajo está en el servidor
+
+### "Error al sync"
+- Verifica que `CRON_SECRET` esté configurado en `.env.local`
+- Verifica `GOOGLE_API_KEY` sea válida
+- Revisa logs en Vercel Dashboard
 
 ## ❓ FAQ
 
@@ -292,18 +325,18 @@ Las contribuciones son bienvenidas. Por favor:
 
 ## 🗺️ Roadmap
 
-Funcionalidades planeadas para futuras versiones:
-
-- [ ] Base de datos PostgreSQL para persistencia completa
-- [ ] Autenticación (NextAuth.js) para múltiples usuarios
-- [ ] Dashboard de estadísticas con gráficos
-- [ ] Monitoreo de múltiples negocios simultáneamente
-- [ ] Análisis de sentimiento con IA
-- [ ] Respuestas automáticas a reseñas
-- [ ] Webhooks para integración con otros sistemas
-- [ ] Exportación de reportes en PDF/CSV
-- [ ] Notificaciones por email además de Telegram
-- [ ] App móvil (React Native)
+| Funcionalidad | Estado |
+|--------------|--------|
+| Scheduler 24/7 + logging | ✅ Completado (M1) |
+| SQLite persistencia | ✅ Completado (M2) |
+| API pública REST | ✅ Completado (M3) |
+| Sistema de notificaciones | ⏳ Pendiente (M4) |
+| Deduplicación con hashes | ⏳ Pendiente (M5) |
+| Multi-negocio | ⏳ Pendiente |
+| Autenticación multiusuario | ⏳ Pendiente |
+| Dashboard de estadísticas | ⏳ Pendiente |
+| Análisis de sentimiento con IA | ⏳ Pendiente |
+| Webhooks & integraciones | ⏳ Pendiente |
 
 ## 🤝 Contribuir
 
