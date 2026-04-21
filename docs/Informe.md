@@ -53,12 +53,27 @@ Un pequeño “rastreador” que mira Google y avisa.
 1. El sistema pregunta a Google por las reseñas
 
 Hay una forma de pedirle a Google:
-“Enséñame todas las reseñas de este negocio.”
+"Enséñame todas las reseñas de este negocio."
 
 Google devuelve una lista:
 Reseña 1, Reseña 2, Reseña 3…
 
-(Esto se hace con una “llamada” a Google, pero no necesitas saber cómo funciona ahora.)
+⚠️ Importante: Esto NO es trivial. Google NO tiene una API pública y gratuita para reseñas.
+
+La Google Business Profile API (anteriormente Google My Business API) tiene estos requisitos:
+
+- **Cuenta de Google Developer** registrada
+- **Verificación de propiedad** del negocio (business verification)
+- **OAuth 2.0** con scopes específicos (no es solo una "API key")
+- **Cuotas estrictas** (rate limits) - máximo ~600 requests/día
+- **Revisión manual** de Google antes de poder usar la API
+
+Alternativas:
+- Scraping (viola Términos de Servicio de Google, puede bloquear IPs)
+- Servicios de terceros (de pago, como Apify)
+- APIs comerciales de terceros (ej: Placeful, ReviewManager)
+
+Esto es lo primero que hay que resolver antes de escribir código.
 
 2. Guardamos las reseñas que ya conocemos
 
