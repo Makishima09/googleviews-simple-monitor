@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { waitForDb } from '@/lib/db';
 import { getPlaces, getPlaceByPlaceId } from '@/lib/db/reviews';
 
 /**
@@ -8,6 +9,8 @@ import { getPlaces, getPlaceByPlaceId } from '@/lib/db/reviews';
  */
 export async function GET(request: NextRequest) {
   try {
+    await waitForDb();
+    
     const placeId = request.nextUrl.searchParams.get('place_id');
 
     if (placeId) {

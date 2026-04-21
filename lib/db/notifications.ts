@@ -1,4 +1,7 @@
-import { db } from './schema';
+import { all, get, run, initDatabase } from '../db';
+
+// Initialize DB
+initDatabase().catch(console.error);
 
 export interface Notification {
   id: number;
@@ -14,50 +17,40 @@ export interface Notification {
   sent_at: string | null;
 }
 
-/**
- * Create a new notification
- */
+// Create notification
 export function createNotification(
   reviewId: string,
   placeId: string,
   payload: object
 ): number {
-  const stmt = db.prepare(`
-    INSERT INTO notifications (review_id, place_id, payload)
-    VALUES (?, ?, ?)
-  `);
-  return stmt.run(reviewId, placeId, JSON.stringify(payload)).lastInsertRowid as number;
+  const result = run(
+    'INSERT INTO notifications (review_id, place_id, payload) VALUES (?, ?, ?)',
+    [reviewId, placeId, JSON.stringify(payload)]
+  );
+  return result.lastInsertRowid;
 }
 
-/**
- * Get pending notifications that are ready to be processed
- */
+// Get pending notifications
 export function getPendingNotifications(limit = 10): Notification[] {
-  return db.prepare(`
+  return all<Notification>(`
     SELECT * FROM notifications 
     WHERE status = 'pending' 
     AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now'))
     ORDER BY created_at ASC
     LIMIT ?
-  `).all(limit) as Notification[];
+  `, [limit]);
 }
 
-/**
- * Mark a notification as sent successfully
- */
+// Mark notification sent
 export function markNotificationSent(id: number): void {
-  db.prepare(`
+  run(`
     UPDATE notifications 
-    SET status = 'sent', sent_at = CURRENT_TIMESTAMP 
+    SET status = 'sent', sent_at = datetime('now') 
     WHERE id = ?
-  `).run(id);
+  `, [id]);
 }
 
-/**
- * Mark a notification as failed with retry logic
- * Uses exponential backoff: 1min, 2min, 4min
- * After 3 failures, moves to dead_letter status
- */
+// Mark notification failed
 export function markNotificationFailed(
   id: number,
   error: string,
@@ -65,31 +58,23 @@ export function markNotificationFailed(
 ): void {
   const maxRetries = 3;
   const backoffMinutes = Math.pow(2, retryCount);
-
+  
   const status = retryCount >= maxRetries ? 'dead_letter' : 'failed';
-  const nextAttempt = retryCount < maxRetries
+  const nextAttempt = retryCount < maxRetries 
     ? `datetime('now', '+${backoffMinutes} minutes')`
     : 'NULL';
 
-  db.prepare(`
+  run(`
     UPDATE notifications 
     SET status = ?, retry_count = ?, last_error = ?, 
         next_attempt_at = ${nextAttempt}
     WHERE id = ?
-  `).run(status, retryCount, error, id);
+  `, [status, retryCount, error, id]);
 }
 
-/**
- * Get notification statistics
- */
-export function getNotificationStats(): {
-  total: number;
-  sent: number;
-  pending: number;
-  failed: number;
-  dead_letter: number;
-} {
-  return db.prepare(`
+// Get notification stats
+export function getNotificationStats() {
+  return get(`
     SELECT 
       COUNT(*) as total,
       SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
@@ -97,11 +82,21 @@ export function getNotificationStats(): {
       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
       SUM(CASE WHEN status = 'dead_letter' THEN 1 ELSE 0 END) as dead_letter
     FROM notifications
-  `).get() as {
-    total: number;
-    sent: number;
-    pending: number;
-    failed: number;
-    dead_letter: number;
-  };
+  `);
+}
+
+// Get notifications by review
+export function getNotificationsByReview(reviewId: string): Notification[] {
+  return all<Notification>(
+    'SELECT * FROM notifications WHERE review_id = ? ORDER BY created_at DESC',
+    [reviewId]
+  );
+}
+
+// Get notifications by place
+export function getNotificationsByPlace(placeId: string): Notification[] {
+  return all<Notification>(
+    'SELECT * FROM notifications WHERE place_id = ? ORDER BY created_at DESC LIMIT 100',
+    [placeId]
+  );
 }
